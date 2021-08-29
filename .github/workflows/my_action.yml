@@ -21,8 +21,8 @@ jobs:
       uses: actions/upload-artifact@v2
       with:
         name: ${{ github.event.inputs.trigger_id }}
-        path: fake_inputs_trigger_id_file
-        if-no-files-found: ignore
+        path: /dev/null
+        if-no-files-found: error
 
     - name: Sleep
       run: |
