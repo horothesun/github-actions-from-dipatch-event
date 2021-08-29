@@ -1,7 +1,7 @@
 name: My action
 
 on:
-  workflow_dispatch:
+  workflow_dispatch: # enable manual/API triggering
     inputs:
       trigger_id:
         description: 'Trigger ID'
@@ -13,13 +13,23 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     
-    - name: Use Trigger ID
+    - name: Log Trigger ID
       run: |
         echo "Trigger ID: ${{ github.event.inputs.trigger_id }}"
+
+    - name: Create trigger ID named file
+      run: echo ' ' > ${{ github.event.inputs.trigger_id }}
+
+    - name: Create trigger ID named artifact
+      uses: actions/upload-artifact@v2
+      with:
+        name: ${{ github.event.inputs.trigger_id }}
+        path: ${{ github.event.inputs.trigger_id }}
+        if-no-files-found: error
 
     - name: Sleep
       run: |
         echo 'Hello, world!'
         echo 'Sleep...'
-        sleep 1m
+        sleep 15s
         echo '... awake again!'
