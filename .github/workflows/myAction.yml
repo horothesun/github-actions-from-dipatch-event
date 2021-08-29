@@ -2,6 +2,10 @@ name: My action
 
 on:
   workflow_dispatch:
+    inputs:
+      trigger_id:
+        description: 'Trigger ID'
+        required: true
 
 jobs:
   build:
