@@ -17,15 +17,12 @@ jobs:
       run: |
         echo "Trigger ID: ${{ github.event.inputs.trigger_id }}"
 
-    - name: Create trigger ID named file
-      run: echo ' ' > ${{ github.event.inputs.trigger_id }}
-
     - name: Create trigger ID named artifact
       uses: actions/upload-artifact@v2
       with:
         name: ${{ github.event.inputs.trigger_id }}
-        path: ${{ github.event.inputs.trigger_id }}
-        if-no-files-found: error
+        path: fake_inputs_trigger_id_file
+        if-no-files-found: ignore
 
     - name: Sleep
       run: |
