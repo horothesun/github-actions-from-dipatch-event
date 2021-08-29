@@ -15,9 +15,7 @@ jobs:
     
     - name: Use Trigger ID
       run: |
-        echo "Trigger ID: $TRIGGER_ID"
-      env:
-        TRIGGER_ID: ${{ github.event.inputs.logLevel }}
+        echo "Trigger ID: ${{ github.event.inputs.trigger_id }}"
 
     - name: Sleep
       run: |
