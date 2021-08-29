@@ -32,3 +32,9 @@ jobs:
         name: ${{ github.event.inputs.trigger_id }}
         path: /dev/null
         if-no-files-found: error
+
+    - name: Sleep
+      run: |
+        echo 'Sleep...'
+        sleep ${{ env.sleepTime }}
+        echo '... awake again!'
