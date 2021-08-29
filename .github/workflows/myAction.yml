@@ -9,8 +9,9 @@ jobs:
     steps:
     - uses: actions/checkout@v2
 
-    - name: Run a one-line script
+    - name: Sleep
       run: |
         echo 'Hello, world!'
         echo 'Sleep for 4s...'
+        sleep 4s
         echo '... awake again!'
