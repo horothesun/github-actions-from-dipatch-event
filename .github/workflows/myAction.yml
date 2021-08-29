@@ -12,6 +12,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
+    
+    - name: Use Trigger ID
+      run: echo "Trigger ID: ${{ github.event.inputs.trigger_id }}"
 
     - name: Sleep
       run: |
