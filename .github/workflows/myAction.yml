@@ -12,6 +12,6 @@ jobs:
     - name: Sleep
       run: |
         echo 'Hello, world!'
-        echo 'Sleep for 4s...'
-        sleep 4s
+        echo 'Sleep...'
+        sleep 1m
         echo '... awake again!'
