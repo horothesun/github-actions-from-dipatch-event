@@ -38,4 +38,3 @@ jobs:
         echo 'Sleep...'
         sleep ${{ env.sleepTime }}
         echo '... awake again!'
-        exit 123
