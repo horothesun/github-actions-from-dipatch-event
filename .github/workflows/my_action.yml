@@ -11,7 +11,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      sleepTime: 20s
+      sleepTime: 15s
     steps:
     - uses: actions/checkout@v2
   
@@ -38,3 +38,4 @@ jobs:
         echo 'Sleep...'
         sleep ${{ env.sleepTime }}
         echo '... awake again!'
+        exit 123
