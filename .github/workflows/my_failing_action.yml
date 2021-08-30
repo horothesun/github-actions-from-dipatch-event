@@ -1,0 +1,38 @@
+name: My failing action
+
+on:
+  workflow_dispatch: # enable manual/API triggering
+    inputs:
+      trigger_id:
+        description: 'Trigger ID'
+        required: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      sleepTime: 15s
+    steps:
+    - uses: actions/checkout@v2
+  
+    - name: Log Trigger ID
+      run: |
+        echo "Trigger ID: ${{ github.event.inputs.trigger_id }}"
+
+    - name: Sleep
+      run: |
+        echo 'Hello, world!'
+        echo 'Sleep...'
+        sleep ${{ env.sleepTime }}
+        echo '... awake again!'
+
+    - name: Create trigger ID named artifact
+      uses: actions/upload-artifact@v2
+      with:
+        name: ${{ github.event.inputs.trigger_id }}
+        path: /dev/null
+        if-no-files-found: error
+
+    - name: Fail
+      run: |
+        exit 123
