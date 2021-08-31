@@ -1,11 +1,13 @@
 name: My action
 
 on:
+# -------- Add this section to your workflow --------
   workflow_dispatch: # enable manual/API triggering
     inputs:
       trigger_id:
         description: 'Trigger ID'
         required: true
+# ---------------------------------------------------
 
 jobs:
   build:
@@ -26,12 +28,14 @@ jobs:
         sleep ${{ env.sleepTime }}
         echo '... awake again!'
 
+# -------- Add this section to your workflow --------
     - name: Create trigger ID named artifact
       uses: actions/upload-artifact@v2
       with:
         name: ${{ github.event.inputs.trigger_id }}
         path: /dev/null
         if-no-files-found: error
+# ---------------------------------------------------
 
     - name: Sleep
       run: |
