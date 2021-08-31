@@ -2,10 +2,10 @@ name: My action
 
 on:
   workflow_dispatch: # enable manual/API triggering
-#     inputs:
-#       trigger_id:
-#         description: 'Trigger ID'
-#         required: true
+    inputs:
+      trigger_id:
+        description: 'Trigger ID'
+        required: true
 
 jobs:
   build:
