@@ -1,0 +1,277 @@
+final def Date startDate = new Date()
+final def String startDateTimestamp = startDate.format("yyyy-MM-dd'T'HH:mm:ssZ")
+
+final def long artifactPollIntervalSeconds = 15
+final def long artifactPollTimeoutMinutes = 10
+final def Integer artifactPollMaxConsecutiveExceptionsAllowed = 3
+
+final def long runCompletionPollIntervalSeconds = 10
+final def long runCompletionPollTimeoutMinutes = 2
+final def Integer runCompletionPollMaxConsecutiveExceptionsAllowed = 3
+
+node {
+    checkout scm
+}
+
+pipeline {
+
+    agent any
+
+    environment {
+        WORKFLOW_RUNS_PER_PAGE = "50"
+        ARTIFACTS_PER_PAGE = "30"
+        TRIGGER_ID = "TRIGGER-${UUID.randomUUID().toString()}"
+        GITHUB_CREDENTIALS = credentials("GITHUB_PRIVATE_REPOS_AND_WORKFLOWS_CREDENTIALS")
+        GITHUB_USER = "$GITHUB_CREDENTIALS_USR"
+        GITHUB_TOKEN = "$GITHUB_CREDENTIALS_PSW"
+    }
+
+    options {
+        timeout(time: 20, unit: "MINUTES")
+    }
+
+    stages {
+        stage("Input validation") {
+            steps {
+                script {
+                    if (!REPO_OWNER) {
+                        error("❌ REPO_OWNER is required")
+                    }
+                    if (!REPO_NAME) {
+                        error("❌ REPO_NAME is required")
+                    }
+                    if (!REPO_REF) {
+                        error("❌ REPO_REF is required")
+                    }
+                    if (!GITHUB_ACTION_FILE_NAME) {
+                        error("❌ GITHUB_ACTION_FILE_NAME is required")
+                    }
+                }
+            }
+        }
+        stage("Log environment") {
+            steps {
+                println(
+                             "REPO_OWNER: $REPO_OWNER"
+                    + "\n" + "REPO_NAME: $REPO_NAME"
+                    + "\n" + "REPO_REF: $REPO_REF"
+                    + "\n" + "GITHUB_ACTION_FILE_NAME: $GITHUB_ACTION_FILE_NAME"
+                    + "\n" + "TRIGGER_ID: $TRIGGER_ID"
+                    + "\n" + "startDateTimestamp: $startDateTimestamp"
+                    + "\n" + "WORKFLOW_RUNS_PER_PAGE: $WORKFLOW_RUNS_PER_PAGE"
+                    + "\n" + "ARTIFACTS_PER_PAGE: $ARTIFACTS_PER_PAGE"
+                    + "\n" + "artifactPollIntervalSeconds: $artifactPollIntervalSeconds"
+                    + "\n" + "artifactPollTimeoutMinutes: $artifactPollTimeoutMinutes"
+                    + "\n" + "artifactPollMaxConsecutiveExceptionsAllowed: $artifactPollMaxConsecutiveExceptionsAllowed"
+                    + "\n" + "runCompletionPollIntervalSeconds: $runCompletionPollIntervalSeconds"
+                    + "\n" + "runCompletionPollTimeoutMinutes: $runCompletionPollTimeoutMinutes"
+                    + "\n" + "runCompletionPollMaxConsecutiveExceptionsAllowed: $runCompletionPollMaxConsecutiveExceptionsAllowed"
+                )
+            }
+        }
+        stage("Trigger GitHub Action") {
+            steps {
+                triggerGitHubAction()
+            }
+        }
+        stage("Wait for GitHub Action completion") {
+            steps {
+                waitForGitHubActionCompletion(
+                    artifactPollIntervalSeconds, artifactPollTimeoutMinutes, artifactPollMaxConsecutiveExceptionsAllowed,
+                    runCompletionPollIntervalSeconds, runCompletionPollTimeoutMinutes, runCompletionPollMaxConsecutiveExceptionsAllowed
+                )
+            }
+        }
+    }
+
+    post {
+        always {
+            script {
+                if (getContext(hudson.FilePath)) {
+                    cleanWs deleteDirs: true
+                }
+            }
+        }
+        success {
+            println("✅ Success!")
+        }
+    }
+
+}
+
+def triggerGitHubAction() {
+    def url = "https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/actions/workflows/$GITHUB_ACTION_FILE_NAME/dispatches"
+    def connection = new URL(url).openConnection()
+    connection.setRequestMethod("POST")
+    connection.setRequestProperty("Authorization", "token $GITHUB_TOKEN")
+    connection.setRequestProperty("Accept", "application/vnd.github.v3+json")
+    connection.setDoOutput(true)
+    def body = [
+        ref: "$REPO_REF",
+        inputs: [ trigger_id: "$TRIGGER_ID" ]
+    ]
+    def json = groovy.json.JsonOutput.toJson(body)
+    connection.outputStream.write(json.getBytes("UTF-8"))
+    def responseCode = connection.getResponseCode()
+    if (responseCode.equals(204)) {
+        println(
+            "✅ GitHub Action '$GITHUB_ACTION_FILE_NAME' triggered for '$REPO_OWNER/$REPO_NAME'"
+            + "\n🏃🏻‍♂️ Workflow runs: https://github.com/$REPO_OWNER/$REPO_NAME/actions/workflows/$GITHUB_ACTION_FILE_NAME"
+        )
+    } else {
+        throw new Exception("❌ Triggering GitHub Action '$GITHUB_ACTION_FILE_NAME' for '$REPO_OWNER/$REPO_NAME' FAILED (code $responseCode)")
+    }
+}
+
+def waitForGitHubActionCompletion(
+    artifactPollIntervalSeconds, artifactPollTimeoutMinutes, artifactPollMaxConsecutiveExceptionsAllowed,
+    runCompletionPollIntervalSeconds, runCompletionPollTimeoutMinutes, runCompletionPollMaxConsecutiveExceptionsAllowed
+) {
+    def workflowRuns = poll(
+        artifactPollIntervalSeconds,
+        artifactPollTimeoutMinutes,
+        artifactPollMaxConsecutiveExceptionsAllowed,
+        { fetchWorkflowRuns() },
+        { workflowRuns -> doesTriggerIdArtifactExist(workflowRuns) }
+    )
+    def runId = workflowRunWithTriggerIdArtifact(workflowRuns).id
+    def runDetails = poll(
+        runCompletionPollIntervalSeconds,
+        runCompletionPollTimeoutMinutes,
+        runCompletionPollMaxConsecutiveExceptionsAllowed,
+        { fetchWorkflowRunDetails(runId) },
+        { runDetails -> didWorkflowRunComplete(runDetails) }
+    )
+    if (runDetails.conclusion == "success") {
+        println(
+            "✅ Workflow run with ID $runDetails.id completed successfully"
+            + "\n🏃🏻‍♂️ Workflow run: https://github.com/$REPO_OWNER/$REPO_NAME/actions/runs/$runDetails.id"
+        )
+    } else {
+        error(
+            "❌ Workflow run with ID $runDetails.id completed unsuccessfully (conclusion: '$runDetails.conclusion')"
+            + "\n🏃🏻‍♂️ Workflow run: https://github.com/$REPO_OWNER/$REPO_NAME/actions/runs/$runDetails.id"
+        )
+    }
+}
+
+def fetchWorkflowRuns() {
+    def url = "https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/actions/workflows/$GITHUB_ACTION_FILE_NAME/runs?per_page=$WORKFLOW_RUNS_PER_PAGE"
+    def connection = new URL(url).openConnection()
+    connection.setRequestMethod("GET")
+    connection.setRequestProperty("Authorization", "token $GITHUB_TOKEN")
+    connection.setRequestProperty("Accept", "application/vnd.github.v3+json")
+    connection.setDoOutput(true)
+    def responseCode = connection.getResponseCode()
+    if (responseCode.equals(200)) {
+        def responseBody = jsonDecode(connection.getInputStream().getText())
+        return responseBody.workflow_runs.collect { [ id: it.id, created_at: it.created_at ] }
+    } else {
+        throw new Exception("❌ Fetching workflow runs FAILED (code $responseCode)")
+    }
+}
+
+def fetchWorkflowRunArtifacts(runId) {
+    def url = "https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/actions/runs/$runId/artifacts?per_page=$ARTIFACTS_PER_PAGE"
+    def connection = new URL(url).openConnection()
+    connection.setRequestMethod("GET")
+    connection.setRequestProperty("Authorization", "token $GITHUB_TOKEN")
+    connection.setRequestProperty("Accept", "application/vnd.github.v3+json")
+    connection.setDoOutput(true)
+    def responseCode = connection.getResponseCode()
+    if (responseCode.equals(200)) {
+        def responseBody = jsonDecode(connection.getInputStream().getText())
+        return responseBody.artifacts.collect({ it.name })
+    } else {
+        throw new Exception("❌ Fetching workflow run artifacts FAILED (code $responseCode)")
+    }
+}
+
+def Boolean doesTriggerIdArtifactExist(workflowRuns) {
+    def run = workflowRunWithTriggerIdArtifact(workflowRuns)
+    if (run == null) {
+        println("⏱ Trigger ID $TRIGGER_ID named artifact NOT yet found among workflow runs")
+    } else {
+        println(
+            "✅ Trigger ID $TRIGGER_ID FOUND for workflow run ID $run.id (created at $run.created_at)"
+            + "\n🏃🏻‍♂️ Workflow run: https://github.com/$REPO_OWNER/$REPO_NAME/actions/runs/$run.id"
+        )
+    }
+    return run != null
+}
+
+def workflowRunWithTriggerIdArtifact(workflowRuns) {
+    return workflowRuns.find {
+        def artifacts = fetchWorkflowRunArtifacts(it.id)
+        return artifacts.contains(TRIGGER_ID)
+    }
+}
+
+def fetchWorkflowRunDetails(runId) {
+    def url = "https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/actions/runs/$runId"
+    def connection = new URL(url).openConnection()
+    connection.setRequestMethod("GET")
+    connection.setRequestProperty("Authorization", "token $GITHUB_TOKEN")
+    connection.setRequestProperty("Accept", "application/vnd.github.v3+json")
+    connection.setDoOutput(true)
+    def responseCode = connection.getResponseCode()
+    if (responseCode.equals(200)) {
+        def responseBody = jsonDecode(connection.getInputStream().getText())
+        return responseBody
+    } else {
+        throw new Exception("❌ Fetching workflow run FAILED (code $responseCode)")
+    }
+}
+
+def Boolean didWorkflowRunComplete(runDetails) {
+    def Boolean result = runDetails.status == "completed"
+    if (!result) {
+        println("⏱ Workflow run with ID $runDetails.id NOT yet completed (status: '$runDetails.status')")
+    }
+    return result
+}
+
+def <T> T poll(pollIntervalSeconds, timeoutMinutes, maxConsecutiveExceptionsAllowed, functionToPoll, successConditionOnFnResult) {
+    def Boolean isDone = false
+    def Boolean isTimeout = false
+    def Integer exceptionCounter = 0
+    def T result
+    def long timeoutDateMillis = new Date().getTime() + 60 * 1000 * timeoutMinutes
+
+    while (!isDone && !isTimeout) {
+        try {
+            result = functionToPoll()
+            isDone = successConditionOnFnResult(result)
+            exceptionCounter = 0
+        } catch(e) {
+            exceptionCounter += 1
+            if (exceptionCounter > maxConsecutiveExceptionsAllowed) {
+                throw new Exception("Polling failed: base function threw $exceptionCounter exceptions in a row. Last exception: $e.message")
+            }
+        }
+
+        if (!isDone) {
+            sleep(time: pollIntervalSeconds, unit: 'SECONDS')
+        }
+
+        isTimeout = new Date().getTime() >= timeoutDateMillis
+    }
+
+    if (isDone) {
+        return result
+    }
+
+    if (isTimeout) {
+        throw new Exception("Polling timed out after $timeoutMinutes minutes")
+    }
+}
+
+@NonCPS
+def jsonDecode(jsonText) {
+    return new groovy.json.JsonSlurperClassic().parseText(jsonText)
+}
+
+@NonCPS
+def jsonEncode(obj) {
+    return new groovy.json.JsonBuilder(obj).toPrettyString()
+}
