@@ -1,5 +1,8 @@
 # GitHub Actions from Jenkins
 
+[![My action](https://github.com/horothesun/github-actions-from-jenkins/actions/workflows/my_action.yml/badge.svg)](https://github.com/horothesun/github-actions-from-jenkins/actions/workflows/my_action.yml)
+[![My failing action](https://github.com/horothesun/github-actions-from-jenkins/actions/workflows/my_failing_action.yml/badge.svg)](https://github.com/horothesun/github-actions-from-jenkins/actions/workflows/my_failing_action.yml)
+
 Trigger and wait for a GitHub Action workflow from a Jenkins pipeline.
 
 ## Details
